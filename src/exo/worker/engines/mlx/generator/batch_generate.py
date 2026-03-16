@@ -282,8 +282,20 @@ class ExoBatchGenerator:
                     selected_token=response.token,
                 )
 
+            total_prompt_tokens = len(state.all_prompt_tokens)
+            usage = Usage(
+                prompt_tokens=total_prompt_tokens,
+                completion_tokens=state.completion_tokens,
+                total_tokens=total_prompt_tokens + state.completion_tokens,
+                prompt_tokens_details=PromptTokensDetails(
+                    cached_tokens=state.prefix_hit_length
+                ),
+                completion_tokens_details=CompletionTokensDetails(
+                    reasoning_tokens=state.reasoning_tokens
+                ),
+            )
+
             stats: GenerationStats | None = None
-            usage: Usage | None = None
             if is_done:
                 generation_elapsed = time.perf_counter() - state.generation_start_time
                 generation_tps = (
@@ -300,21 +312,9 @@ class ExoBatchGenerator:
                     if mlx_stats is not None and mlx_stats.prompt_time > 0
                     else 0.0,
                     generation_tps=float(generation_tps),
-                    prompt_tokens=len(state.all_prompt_tokens),
+                    prompt_tokens=total_prompt_tokens,
                     generation_tokens=state.completion_tokens,
                     peak_memory_usage=Memory.from_gb(mx.get_peak_memory() / 1e9),
-                )
-                total_prompt_tokens = len(state.all_prompt_tokens)
-                usage = Usage(
-                    prompt_tokens=total_prompt_tokens,
-                    completion_tokens=state.completion_tokens,
-                    total_tokens=total_prompt_tokens + state.completion_tokens,
-                    prompt_tokens_details=PromptTokensDetails(
-                        cached_tokens=state.prefix_hit_length
-                    ),
-                    completion_tokens_details=CompletionTokensDetails(
-                        reasoning_tokens=state.reasoning_tokens
-                    ),
                 )
 
             results.append(
