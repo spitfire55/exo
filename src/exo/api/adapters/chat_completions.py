@@ -147,23 +147,37 @@ def chunk_to_response(
     )
 
 
-async def _with_keepalive(
-    chunk_stream: AsyncGenerator[
-        PrefillProgressChunk | ErrorChunk | ToolCallChunk | TokenChunk, None
-    ],
+async def sse_with_keepalive(
+    sse_stream: AsyncGenerator[str, None],
     interval: float = 15.0,
-) -> AsyncGenerator[PrefillProgressChunk | ErrorChunk | ToolCallChunk | TokenChunk | None, None]:
+) -> AsyncGenerator[str, None]:
     import asyncio
 
-    aiter = chunk_stream.__aiter__()
-    while True:
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+    async def _producer() -> None:
         try:
-            chunk = await asyncio.wait_for(aiter.__anext__(), timeout=interval)
-            yield chunk
-        except asyncio.TimeoutError:
-            yield None
-        except StopAsyncIteration:
-            return
+            async for line in sse_stream:
+                await queue.put(line)
+        finally:
+            await queue.put(None)
+
+    task = asyncio.create_task(_producer())
+    try:
+        while True:
+            try:
+                item = await asyncio.wait_for(queue.get(), timeout=interval)
+                if item is None:
+                    return
+                yield item
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 async def generate_chat_stream(
@@ -175,10 +189,7 @@ async def generate_chat_stream(
     """Generate Chat Completions API streaming events from chunks."""
     last_usage: Usage | None = None
 
-    async for chunk in _with_keepalive(chunk_stream):
-        if chunk is None:
-            yield ": keepalive\n\n"
-            continue
+    async for chunk in chunk_stream:
         match chunk:
             case PrefillProgressChunk():
                 # Use SSE comment so third-party clients ignore it
