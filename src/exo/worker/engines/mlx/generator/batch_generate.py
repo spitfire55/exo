@@ -314,8 +314,20 @@ class ExoBatchGenerator:
                         ),
                     )
 
+            total_prompt_tokens = len(state.all_prompt_tokens)
+            usage = Usage(
+                prompt_tokens=total_prompt_tokens,
+                completion_tokens=state.completion_tokens,
+                total_tokens=total_prompt_tokens + state.completion_tokens,
+                prompt_tokens_details=PromptTokensDetails(
+                    cached_tokens=state.prefix_hit_length
+                ),
+                completion_tokens_details=CompletionTokensDetails(
+                    reasoning_tokens=state.reasoning_tokens
+                ),
+            )
+
             stats: GenerationStats | None = None
-            usage: Usage | None = None
             if is_done:
                 gen_time_delta = (
                     self._mlx_gen._stats.generation_time
@@ -333,18 +345,6 @@ class ExoBatchGenerator:
                     prompt_tokens=len(state.all_prompt_tokens),
                     generation_tokens=state.completion_tokens,
                     peak_memory_usage=Memory.from_gb(mx.get_peak_memory() / 1e9),
-                )
-                total_prompt_tokens = len(state.all_prompt_tokens)
-                usage = Usage(
-                    prompt_tokens=total_prompt_tokens,
-                    completion_tokens=state.completion_tokens,
-                    total_tokens=total_prompt_tokens + state.completion_tokens,
-                    prompt_tokens_details=PromptTokensDetails(
-                        cached_tokens=state.prefix_hit_length
-                    ),
-                    completion_tokens_details=CompletionTokensDetails(
-                        reasoning_tokens=state.reasoning_tokens
-                    ),
                 )
 
             results.append(
