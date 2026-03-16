@@ -211,7 +211,7 @@ async def generate_chat_stream(
                 last_usage = chunk.usage or last_usage
 
                 chunk_response = chunk_to_response(chunk, command_id)
-                if chunk.finish_reason is not None:
+                if last_usage is not None:
                     chunk_response = chunk_response.model_copy(
                         update={"usage": last_usage}
                     )
