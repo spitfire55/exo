@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import contextlib
 import json
@@ -613,7 +614,7 @@ class API:
                     if chunk.finish_reason is not None:
                         break
 
-        except anyio.get_cancelled_exc_class():
+        except (anyio.get_cancelled_exc_class(), asyncio.CancelledError):
             command = TaskCancelled(cancelled_command_id=command_id)
             with anyio.CancelScope(shield=True):
                 await self.command_sender.send(
@@ -969,7 +970,7 @@ class API:
                         del image_total_chunks[key]
                         del image_metadata[key]
 
-        except anyio.get_cancelled_exc_class():
+        except (anyio.get_cancelled_exc_class(), asyncio.CancelledError):
             command = TaskCancelled(cancelled_command_id=command_id)
             with anyio.CancelScope(shield=True):
                 await self.command_sender.send(
@@ -1055,7 +1056,7 @@ class API:
                     )
 
             return (images, stats if capture_stats else None)
-        except anyio.get_cancelled_exc_class():
+        except (anyio.get_cancelled_exc_class(), asyncio.CancelledError):
             command = TaskCancelled(cancelled_command_id=command_id)
             with anyio.CancelScope(shield=True):
                 await self.command_sender.send(
