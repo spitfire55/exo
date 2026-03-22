@@ -47,9 +47,11 @@ def _try_parse_json(value: str) -> dict[str, Any] | str:
         return value
 
 
-def _build_tool_calls(chunk: ToolCallChunk) -> list[OllamaToolCall]:
+def _build_tool_calls(
+    chunk: ToolCallChunk, index_offset: int = 0
+) -> list[OllamaToolCall]:
     tool_calls: list[OllamaToolCall] = []
-    for index, tool in enumerate(chunk.tool_calls):
+    for i, tool in enumerate(chunk.tool_calls):
         # tool.arguments is always str; try to parse as JSON dict for Ollama format
         arguments: dict[str, Any] | str = _try_parse_json(tool.arguments)
         tool_calls.append(
@@ -57,7 +59,9 @@ def _build_tool_calls(chunk: ToolCallChunk) -> list[OllamaToolCall]:
                 id=tool.id,
                 type="function",
                 function=OllamaToolFunction(
-                    name=tool.name, arguments=arguments, index=index
+                    name=tool.name,
+                    arguments=arguments,
+                    index=index_offset + i,
                 ),
             )
         )
@@ -163,7 +167,7 @@ async def generate_ollama_chat_stream(
 ) -> AsyncGenerator[str, None]:
     """Generate streaming responses in Ollama format (newline-delimited JSON)."""
     thinking_parts: list[str] = []
-
+    accumulated_tool_calls: list[OllamaToolCall] = []
     async for chunk in chunk_stream:
         match chunk:
             case PrefillProgressChunk():
@@ -182,25 +186,32 @@ async def generate_ollama_chat_stream(
                 return
 
             case ToolCallChunk():
-                prompt_eval, eval_count = _get_usage(chunk)
-                response = OllamaChatResponse(
-                    model=str(chunk.model),
-                    message=OllamaMessage(
-                        role="assistant",
-                        content="",
-                        tool_calls=_build_tool_calls(chunk),
-                        thinking="".join(thinking_parts) if thinking_parts else None,
-                    ),
-                    done=True,
-                    done_reason="tool_call",
-                    prompt_eval_count=prompt_eval,
-                    eval_count=eval_count,
+                accumulated_tool_calls.extend(
+                    _build_tool_calls(chunk, index_offset=len(accumulated_tool_calls))
                 )
-                yield f"{response.model_dump_json(exclude_none=True)}\n"
-                return
 
             case TokenChunk():
                 done = chunk.finish_reason is not None
+
+                if done and accumulated_tool_calls:
+                    prompt_eval, eval_count = _get_usage(chunk)
+                    response = OllamaChatResponse(
+                        model=str(chunk.model),
+                        message=OllamaMessage(
+                            role="assistant",
+                            content="",
+                            tool_calls=accumulated_tool_calls,
+                            thinking="".join(thinking_parts)
+                            if thinking_parts
+                            else None,
+                        ),
+                        done=True,
+                        done_reason="tool_call",
+                        prompt_eval_count=prompt_eval,
+                        eval_count=eval_count,
+                    )
+                    yield f"{response.model_dump_json(exclude_none=True)}\n"
+                    return
 
                 if chunk.is_thinking:
                     thinking_parts.append(chunk.text)
@@ -279,9 +290,13 @@ async def collect_ollama_chat_response(
             case ToolCallChunk():
                 if model is None:
                     model = str(chunk.model)
-                tool_calls.extend(_build_tool_calls(chunk))
-                finish_reason = chunk.finish_reason
+                tool_calls.extend(
+                    _build_tool_calls(chunk, index_offset=len(tool_calls))
+                )
                 prompt_eval_count, eval_count = _get_usage(chunk)
+
+    if tool_calls:
+        finish_reason = "tool_calls"
 
     combined_text = "".join(text_parts)
     combined_thinking = "".join(thinking_parts) if thinking_parts else None
@@ -359,18 +374,8 @@ async def generate_ollama_generate_stream(
                 return
 
             case ToolCallChunk():
-                # generate endpoint doesn't support tools; emit as done
-                prompt_eval, eval_count = _get_usage(chunk)
-                resp = OllamaGenerateResponse(
-                    model=str(chunk.model),
-                    response="",
-                    done=True,
-                    done_reason="stop",
-                    prompt_eval_count=prompt_eval,
-                    eval_count=eval_count,
-                )
-                yield f"{resp.model_dump_json(exclude_none=True)}\n"
-                return
+                # generate endpoint doesn't support tools; skip tool call chunks
+                continue
 
             case TokenChunk():
                 done = chunk.finish_reason is not None
@@ -440,8 +445,6 @@ async def collect_ollama_generate_response(
             case ToolCallChunk():
                 if model is None:
                     model = str(chunk.model)
-                finish_reason = chunk.finish_reason
-                prompt_eval_count, eval_count = _get_usage(chunk)
 
     assert model is not None
     yield OllamaGenerateResponse(

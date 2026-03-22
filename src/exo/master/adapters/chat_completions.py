@@ -155,6 +155,7 @@ async def generate_chat_stream(
 ) -> AsyncGenerator[str, None]:
     """Generate Chat Completions API streaming events from chunks."""
     last_usage: Usage | None = None
+    tool_call_index = 0
 
     async for chunk in chunk_stream:
         match chunk:
@@ -176,37 +177,49 @@ async def generate_chat_stream(
 
             case ToolCallChunk():
                 last_usage = chunk.usage or last_usage
-
-                tool_call_deltas = [
-                    ToolCall(
+                for tool in chunk.tool_calls:
+                    tool_call_delta = ToolCall(
                         id=tool.id,
-                        index=i,
+                        index=tool_call_index,
                         function=tool,
                     )
-                    for i, tool in enumerate(chunk.tool_calls)
-                ]
-                tool_response = ChatCompletionResponse(
-                    id=command_id,
-                    created=int(time.time()),
-                    model=chunk.model,
-                    choices=[
-                        StreamingChoiceResponse(
-                            index=0,
-                            delta=ChatCompletionMessage(
-                                role="assistant",
-                                tool_calls=tool_call_deltas,
-                            ),
-                            finish_reason="tool_calls",
-                        )
-                    ],
-                    usage=last_usage,
-                )
-                yield f"data: {tool_response.model_dump_json()}\n\n"
-                yield "data: [DONE]\n\n"
-                return
+                    tool_call_index += 1
+                    tool_response = ChatCompletionResponse(
+                        id=command_id,
+                        created=int(time.time()),
+                        model=chunk.model,
+                        choices=[
+                            StreamingChoiceResponse(
+                                index=0,
+                                delta=ChatCompletionMessage(
+                                    role="assistant",
+                                    tool_calls=[tool_call_delta],
+                                ),
+                                finish_reason=None,
+                            )
+                        ],
+                    )
+                    yield f"data: {tool_response.model_dump_json()}\n\n"
 
             case TokenChunk():
                 last_usage = chunk.usage or last_usage
+                if chunk.finish_reason is not None and tool_call_index > 0:
+                    finish_response = ChatCompletionResponse(
+                        id=command_id,
+                        created=int(time.time()),
+                        model=chunk.model,
+                        choices=[
+                            StreamingChoiceResponse(
+                                index=0,
+                                delta=ChatCompletionMessage(role="assistant"),
+                                finish_reason="tool_calls",
+                            )
+                        ],
+                        usage=last_usage,
+                    )
+                    yield f"data: {finish_response.model_dump_json()}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
 
                 chunk_response = chunk_to_response(chunk, command_id)
                 if chunk.finish_reason is not None:
@@ -231,6 +244,7 @@ async def collect_chat_response(
     text_parts: list[str] = []
     thinking_parts: list[str] = []
     tool_calls: list[ToolCall] = []
+    tool_call_index = 0
     logprobs_content: list[LogprobsContentItem] = []
     model: str | None = None
     finish_reason: FinishReason | None = None
@@ -269,15 +283,18 @@ async def collect_chat_response(
                 if model is None:
                     model = chunk.model
                 last_usage = chunk.usage or last_usage
-                tool_calls.extend(
-                    ToolCall(
-                        id=tool.id,
-                        index=i,
-                        function=tool,
+                for tool in chunk.tool_calls:
+                    tool_calls.append(
+                        ToolCall(
+                            id=tool.id,
+                            index=tool_call_index,
+                            function=tool,
+                        )
                     )
-                    for i, tool in enumerate(chunk.tool_calls)
-                )
-                finish_reason = chunk.finish_reason
+                    tool_call_index += 1
+
+    if tool_calls:
+        finish_reason = "tool_calls"
 
     if error_message is not None:
         raise ValueError(error_message)

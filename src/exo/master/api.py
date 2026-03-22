@@ -654,14 +654,14 @@ class API:
                     text_parts.append(chunk.text)
 
                 if isinstance(chunk, ToolCallChunk):
-                    tool_calls.extend(
-                        ToolCall(
-                            id=str(uuid4()),
-                            index=i,
-                            function=tool,
+                    for tool in chunk.tool_calls:
+                        tool_calls.append(
+                            ToolCall(
+                                id=str(uuid4()),
+                                index=len(tool_calls),
+                                function=tool,
+                            )
                         )
-                        for i, tool in enumerate(chunk.tool_calls)
-                    )
 
                 stats = chunk.stats or stats
 
@@ -672,6 +672,9 @@ class API:
 
         combined_text = "".join(text_parts)
         assert model is not None
+
+        if tool_calls:
+            finish_reason = "tool_calls"
 
         return BenchChatCompletionResponse(
             id=command_id,

@@ -38,7 +38,7 @@ class ErrorChunk(BaseChunk):
 class ToolCallChunk(BaseChunk):
     tool_calls: list[ToolCallItem]
     usage: Usage | None
-    finish_reason: Literal["tool_calls"] = "tool_calls"
+    finish_reason: Literal["tool_calls"] | None = None
     stats: GenerationStats | None = None
 
 
