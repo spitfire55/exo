@@ -193,7 +193,7 @@ async def generate_ollama_chat_stream(
             case TokenChunk():
                 done = chunk.finish_reason is not None
 
-                if done and accumulated_tool_calls:
+                if accumulated_tool_calls:
                     prompt_eval, eval_count = _get_usage(chunk)
                     response = OllamaChatResponse(
                         model=str(chunk.model),

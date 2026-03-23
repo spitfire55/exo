@@ -203,7 +203,7 @@ async def generate_chat_stream(
 
             case TokenChunk():
                 last_usage = chunk.usage or last_usage
-                if chunk.finish_reason is not None and tool_call_index > 0:
+                if tool_call_index > 0:
                     finish_response = ChatCompletionResponse(
                         id=command_id,
                         created=int(time.time()),
