@@ -41,24 +41,12 @@ from exo.worker.runner.bootstrap import logger
 _MIN_PREFIX_HIT_RATIO_TO_UPDATE = 0.5
 
 
-def _stop_sequences(
-    task_params: TextGenerationTaskParams,
-    tokenizer: TokenizerWrapper | None = None,
-) -> list[str]:
-    seqs: list[str] = []
-    if task_params.stop is not None:
-        if isinstance(task_params.stop, str):
-            seqs.append(task_params.stop)
-        else:
-            seqs.extend(task_params.stop)
-    if (
-        task_params.tools
-        and tokenizer is not None
-        and tokenizer.tool_call_end is not None
-        and tokenizer.tool_call_end not in seqs
-    ):
-        seqs.append(tokenizer.tool_call_end)
-    return seqs
+def _stop_sequences(task_params: TextGenerationTaskParams) -> list[str]:
+    if task_params.stop is None:
+        return []
+    if isinstance(task_params.stop, str):
+        return [task_params.stop]
+    return task_params.stop
 
 
 @dataclass
@@ -265,7 +253,7 @@ class ExoBatchGenerator:
                 FinishReason | None, response.finish_reason
             )
             task_params = state.task_params
-            stop_sequences = _stop_sequences(task_params, self.tokenizer)
+            stop_sequences = _stop_sequences(task_params)
             max_stop_len = max((len(s) for s in stop_sequences), default=0)
 
             if stop_sequences:
