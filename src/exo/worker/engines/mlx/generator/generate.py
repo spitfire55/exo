@@ -512,10 +512,16 @@ def mlx_generate(
 
     # Normalize stop sequences to a list
     stop_sequences: list[str] = (
-        ([task.stop] if isinstance(task.stop, str) else task.stop)
+        ([task.stop] if isinstance(task.stop, str) else list(task.stop))
         if task.stop is not None
         else []
     )
+    if (
+        task.tools
+        and tokenizer.tool_call_end is not None
+        and tokenizer.tool_call_end not in stop_sequences
+    ):
+        stop_sequences.append(tokenizer.tool_call_end)
     max_stop_len = max((len(s) for s in stop_sequences), default=0)
 
     # Prefill cache with all tokens except the last one
