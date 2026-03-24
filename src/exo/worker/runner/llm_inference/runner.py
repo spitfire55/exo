@@ -300,6 +300,7 @@ class Runner:
 
                 match task:
                     case TextGeneration():
+                        logger.info(f"runner inner loop: received new task {task.task_id} (command_id={task.command_id})")
                         self.acknowledge_task(task)
                         self.submit_text_generation(task)
                     case Shutdown():
