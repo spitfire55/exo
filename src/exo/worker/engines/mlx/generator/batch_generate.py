@@ -268,6 +268,10 @@ class ExoBatchGenerator:
                 state.in_thinking = False
             if state.in_thinking:
                 state.reasoning_tokens += 1
+                if text and text != think_start:
+                    print(text, end="", flush=True)
+            elif think_end is not None and text == think_end:
+                print()  # newline after thinking block ends
 
             if state.eos_suppressor is not None:
                 if self.tokenizer.tool_call_start is not None and text == self.tokenizer.tool_call_start:
