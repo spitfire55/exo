@@ -211,6 +211,13 @@ class ExoBatchGenerator:
 
         uid = uids[0]
 
+        # Check if the prompt ends inside a thinking block (e.g. chat template added <think>)
+        starts_in_thinking = (
+            self.tokenizer.think_start_id is not None
+            and len(all_prompt_tokens) > 0
+            and int(all_prompt_tokens[-1]) == self.tokenizer.think_start_id
+        )
+
         self._active_tasks[uid] = _EngineTask(
             uid=uid,
             task_params=task_params,
@@ -224,6 +231,7 @@ class ExoBatchGenerator:
             generation_start_time=time.perf_counter(),
             prefill_tps=_prefill_tps,
             generation_time_at_start=self._mlx_gen._stats.generation_time,
+            in_thinking=starts_in_thinking,
         )
 
         return uid
